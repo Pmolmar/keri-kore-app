@@ -1,9 +1,7 @@
-mod db;
-
 use cesrox::primitives::codes::basic::Basic;
 use keri_core::{
     actor,
-    // database::{redb::RedbDatabase, sled::SledEventDatabase},
+    database::{redb::RedbDatabase, sled::SledEventDatabase},
     event_message::{
         event_msg_builder::EventMsgBuilder, signed_event_message::Notice, EventTypeTag,
     },
@@ -12,6 +10,8 @@ use keri_core::{
     signer::{CryptoBox, KeyManager},
 };
 use std::sync::Arc;
+use tauri::Manager;
+use tauri_plugin_fs::FsExt;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -20,7 +20,7 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn keri_inception() -> String {
+async fn keri_inception(app: tauri::AppHandle) -> String {
     let key_manager = CryptoBox::new();
 
     match key_manager {
@@ -29,16 +29,22 @@ async fn keri_inception() -> String {
             let current_key = BasicPrefix::new(Basic::Ed25519, key_manager.public_key());
             let next_key = BasicPrefix::new(Basic::Ed25519, key_manager.next_public_key());
 
-            //Crea DB de eventos
-            //Cambiar a usar BBDD sqlite
-            // let root = Builder::new().prefix("test-db").tempdir().unwrap();
-            // let db = Arc::new(SledEventDatabase::new(root.path()).unwrap());
-            // let events_db_path = NamedTempFile::new().unwrap();
-            // let events_db = Arc::new(RedbDatabase::new(events_db_path.path()).unwrap());
+            // Get platform-specific app directory
+            let app_dir = app
+                .path()
+                .app_data_dir()
+                .expect("Failed to get app directory");
+            println!("App data directory: {:?}", app_dir);
+            // Create paths that work on both mobile and desktop
+            let root_path = app_dir.join("test-db");
+            let events_db_path = app_dir.join("events.db");
 
-            // Initialize SQLx database connection
-            let events_db = Arc::new(db::SqlxEventDatabase::new("sqlite::db"));
-            let db = Arc::new(events_db.clone());
+            // Create directory if needed
+            std::fs::create_dir_all(&app_dir).expect("Failed to create directory");
+
+            // Initialize databases
+            let db = Arc::new(SledEventDatabase::new(&root_path).unwrap());
+            let events_db = Arc::new(RedbDatabase::new(&events_db_path).unwrap());
 
             let (processor, storage) = (
                 BasicProcessor::new(events_db.clone(), db.clone(), None),
@@ -115,6 +121,15 @@ async fn keri_inception() -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            // allowed the given directory
+            let scope = app.fs_scope();
+            scope.allow_directory("./data", false);
+            // dbg!(scope.allowed());
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![greet])
         .invoke_handler(tauri::generate_handler![keri_inception])
         .run(tauri::generate_context!())
