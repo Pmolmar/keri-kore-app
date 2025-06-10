@@ -1,14 +1,17 @@
+mod keri;
+mod paths;
+
 use cesrox::primitives::codes::basic::Basic;
-use keri_core::{
-    actor,
-    database::{redb::RedbDatabase, sled::SledEventDatabase},
-    event_message::{
-        event_msg_builder::EventMsgBuilder, signed_event_message::Notice, EventTypeTag,
-    },
-    prefix::{BasicPrefix, IndexedSignature, SelfSigningPrefix},
-    processor::{basic_processor::BasicProcessor, event_storage::EventStorage},
-    signer::{CryptoBox, KeyManager},
-};
+// use keri_core::{
+//     actor,
+//     database::{redb::RedbDatabase, sled::SledEventDatabase},
+//     event_message::{
+//         event_msg_builder::EventMsgBuilder, signed_event_message::Notice, EventTypeTag,
+//     },
+//     prefix::{BasicPrefix, IndexedSignature, SelfSigningPrefix},
+//     processor::{basic_processor::BasicProcessor, event_storage::EventStorage},
+//     signer::{CryptoBox, KeyManager},
+// };
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_fs::FsExt;
@@ -21,100 +24,21 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 async fn keri_inception(app: tauri::AppHandle) -> String {
-    let key_manager = CryptoBox::new();
+    let (root_path, events_db_path) = paths::get_paths(app);
 
-    match key_manager {
-        Ok(key_manager) => {
-            //Crea Claves
-            let current_key = BasicPrefix::new(Basic::Ed25519, key_manager.public_key());
-            let next_key = BasicPrefix::new(Basic::Ed25519, key_manager.next_public_key());
-
-            // Get platform-specific app directory
-            let app_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app directory");
-            println!("App data directory: {:?}", app_dir);
-            // Create paths that work on both mobile and desktop
-            let root_path = app_dir.join("test-db");
-            let events_db_path = app_dir.join("events.db");
-
-            // Create directory if needed
-            std::fs::create_dir_all(&app_dir).expect("Failed to create directory");
-
-            // Initialize databases
-            let db = Arc::new(SledEventDatabase::new(&root_path).unwrap());
-            let events_db = Arc::new(RedbDatabase::new(&events_db_path).unwrap());
-
-            let (processor, storage) = (
-                BasicProcessor::new(events_db.clone(), db.clone(), None),
-                EventStorage::new(events_db.clone(), db.clone()),
-            );
-
-            let inception_event = EventMsgBuilder::new(EventTypeTag::Icp)
-                .with_keys(vec![current_key])
-                .with_next_keys(vec![next_key])
-                .build();
-
-            match inception_event {
-                Ok(event) => {
-                    // format!(
-                    //     "Evento de incepcion satisfactorio con id {:?}",
-                    //     event.data.prefix.clone()
-                    // );
-                    let identifier = event.data.prefix.clone();
-                    let to_sign = event.encode();
-
-                    match to_sign {
-                        Ok(sign) => {
-                            let signature = key_manager.sign(&sign);
-                            match signature {
-                                Ok(signature) => {
-                                    let indexed_signature = IndexedSignature::new_both_same(
-                                        SelfSigningPrefix::Ed25519Sha512(signature),
-                                        0,
-                                    );
-
-                                    let signed_inception =
-                                        event.sign(vec![indexed_signature], None, None);
-
-                                    match actor::process_notice(
-                                        Notice::Event(signed_inception),
-                                        &processor,
-                                    ) {
-                                        Ok(val) => {
-                                            let state = storage.get_state(&identifier);
-                                            format!(
-                                                "Evento de incepcion creado con estado final {:?}",
-                                                state
-                                            )
-                                        }
-                                        Err(error) => {
-                                            format!("Error procesando evento {:?}", error)
-                                        }
-                                    }
-                                }
-                                Err(error) => {
-                                    format!("Error con firma {:?}", error)
-                                }
-                            }
-                        }
-                        Err(error) => {
-                            format!("Error preparando firma {:?}", error)
-                        }
-                    }
-                }
-                Err(error) => {
-                    format!("Error con el evento de creacion {:?}", error)
-                }
-            }
-
-            // format!("Todo Ok con clave {:?}", current_key)
+    let new_keri = keri::new_keri_data(root_path, events_db_path);
+    match new_keri {
+        Ok(keri) => {
+            let inception_event = keri::keri_inception_event(keri);
+            format!("Ok {}", inception_event)
         }
-        Err(error) => {
-            format!("Error con el KeyManager {}", error)
-        }
+        Err(err) => format!("Error: {}", err),
     }
+}
+
+#[tauri::command]
+async fn keri_rotate(app: tauri::AppHandle) -> String {
+    format!("Unimplemented")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
