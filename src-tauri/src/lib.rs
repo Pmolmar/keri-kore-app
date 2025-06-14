@@ -1,3 +1,4 @@
+mod did;
 mod keri;
 mod paths;
 

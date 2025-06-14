@@ -1,7 +1,7 @@
 use cesrox::primitives::codes::basic::Basic;
 use keri_core::{
     actor,
-    database::{redb::RedbDatabase, sled::SledEventDatabase},
+    database::redb::RedbDatabase,
     event::KeyEvent,
     event_message::{
         event_msg_builder::EventMsgBuilder, msg::TypedEvent, signed_event_message::Notice,
@@ -13,11 +13,9 @@ use keri_core::{
 };
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::Manager;
-use tauri_plugin_fs::FsExt;
 
 pub struct KeriData {
-    key_manager: CryptoBox,
+    pub key_manager: CryptoBox,
     storage: EventStorage<RedbDatabase>,
     processor: BasicProcessor<RedbDatabase>,
 }
@@ -36,12 +34,12 @@ pub fn new_keri_data(root_path: PathBuf, events_db_path: PathBuf) -> Result<Keri
     match key_manager {
         Ok(key_manager) => {
             // Initialize databases
-            let db = Arc::new(SledEventDatabase::new(&root_path).unwrap());
+            // let db = Arc::new(SledEventDatabase::new(&root_path).unwrap());
             let events_db = Arc::new(RedbDatabase::new(&events_db_path).unwrap());
 
             let (processor, storage) = (
-                BasicProcessor::new(events_db.clone(), db.clone(), None),
-                EventStorage::new(events_db.clone(), db.clone()),
+                BasicProcessor::new(events_db.clone(), None),
+                EventStorage::new(events_db.clone()),
             );
 
             Ok(KeriData {
